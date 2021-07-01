@@ -3,6 +3,7 @@
 pragma solidity 0.7.6;
 pragma experimental ABIEncoderV2;
 
+import "./interfaces/IDAIPermit.sol";
 import "./interfaces/IERC20.sol";
 
 // File @boringcrypto/boring-solidity/contracts/BoringBatchable.sol@v1.2.0
