@@ -106,9 +106,6 @@ contract InariV1 is BoringBatchableWithDai, SushiZap {
     /************
     KASHI HELPERS 
     ************/
-    /************
-    KASHI HELPERS 
-    ************/
     function assetToKashi(IKashiBridge kashiPair, address to, uint256 amount) external returns (uint256 fraction) {
         IERC20 asset = kashiPair.asset();
         asset.safeTransferFrom(msg.sender, address(bento), amount);
