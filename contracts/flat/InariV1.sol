@@ -120,7 +120,7 @@ contract BaseBoringBatchable {
     /// @notice Allows batched call to self (this contract).
     /// @param calls An array of inputs for each call.
     /// @param revertOnFail If True then reverts after a failed call and stops doing further calls.
-    function batch(bytes[] calldata calls, bool revertOnFail) external {
+    function batch(bytes[] calldata calls, bool revertOnFail) external payable {
         for (uint256 i = 0; i < calls.length; i++) {
             (bool success, bytes memory result) = address(this).delegatecall(calls[i]);
             if (!success && revertOnFail) {
@@ -742,9 +742,6 @@ contract InariV1 is BoringBatchableWithDai, SushiZap {
         return LPBought;
     }
     
-    /************
-    KASHI HELPERS 
-    ************/
     /************
     KASHI HELPERS 
     ************/
