@@ -106,6 +106,9 @@ contract InariV1 is BoringBatchableWithDai, SushiZap {
     /************
     KASHI HELPERS 
     ************/
+    /************
+    KASHI HELPERS 
+    ************/
     function assetToKashi(IKashiBridge kashiPair, address to, uint256 amount) external returns (uint256 fraction) {
         IERC20 asset = kashiPair.asset();
         asset.safeTransferFrom(msg.sender, address(bento), amount);
@@ -113,11 +116,29 @@ contract InariV1 is BoringBatchableWithDai, SushiZap {
         fraction = kashiPair.addAsset(to, true, amount);
     }
     
+    function assetToKashiChef(uint256 pid, uint256 amount, address to) external returns (uint256 fraction) {
+        address kashiPair = address(masterChefv2.lpToken(pid));
+        IERC20 asset = IKashiBridge(kashiPair).asset();
+        asset.safeTransferFrom(msg.sender, address(bento), amount);
+        IBentoBridge(bento).deposit(asset, address(bento), address(kashiPair), amount, 0); 
+        fraction = IKashiBridge(kashiPair).addAsset(address(this), true, amount);
+        masterChefv2.deposit(pid, fraction, to);
+    }
+    
     function assetBalanceToKashi(IKashiBridge kashiPair, address to) external returns (uint256 fraction) {
         IERC20 asset = kashiPair.asset();
         uint256 balance = asset.safeBalanceOfSelf();
         IBentoBridge(bento).deposit(asset, address(bento), address(kashiPair), balance, 0); 
         fraction = kashiPair.addAsset(to, true, balance);
+    }
+    
+    function assetBalanceToKashiChef(uint256 pid, address to) external returns (uint256 fraction) {
+        address kashiPair = address(masterChefv2.lpToken(pid));
+        IERC20 asset = IKashiBridge(kashiPair).asset();
+        uint256 balance = asset.safeBalanceOfSelf();
+        IBentoBridge(bento).deposit(asset, address(bento), address(kashiPair), balance, 0); 
+        fraction = IKashiBridge(kashiPair).addAsset(address(this), true, balance);
+        masterChefv2.deposit(pid, fraction, to);
     }
 
     function assetBalanceFromKashi(address kashiPair, address to) external returns (uint256 share) {
