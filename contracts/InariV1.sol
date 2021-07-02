@@ -117,7 +117,7 @@ contract InariV1 is BoringBatchableWithDai, SushiZap {
         address kashiPair = address(masterChefv2.lpToken(pid));
         IERC20 asset = IKashiBridge(kashiPair).asset();
         asset.safeTransferFrom(msg.sender, address(bento), amount);
-        IBentoBridge(bento).deposit(asset, address(bento), address(kashiPair), amount, 0); 
+        IBentoBridge(bento).deposit(asset, address(bento), kashiPair, amount, 0); 
         fraction = IKashiBridge(kashiPair).addAsset(address(this), true, amount);
         masterChefv2.deposit(pid, fraction, to);
     }
@@ -133,7 +133,7 @@ contract InariV1 is BoringBatchableWithDai, SushiZap {
         address kashiPair = address(masterChefv2.lpToken(pid));
         IERC20 asset = IKashiBridge(kashiPair).asset();
         uint256 balance = asset.safeBalanceOfSelf();
-        IBentoBridge(bento).deposit(asset, address(bento), address(kashiPair), balance, 0); 
+        IBentoBridge(bento).deposit(asset, address(bento), kashiPair, balance, 0); 
         fraction = IKashiBridge(kashiPair).addAsset(address(this), true, balance);
         masterChefv2.deposit(pid, fraction, to);
     }
@@ -169,6 +169,37 @@ contract InariV1 is BoringBatchableWithDai, SushiZap {
         _pairAddress.safeTransfer(address(bento), LPBought);
         IBentoBridge(bento).deposit(_pairAddress, address(bento), address(kashiPair), LPBought, 0); 
         fraction = kashiPair.addAsset(to, true, LPBought);
+    }
+    // - to-do, fix stack size stuff
+    /// @notice Liquidity zap into KASHI & CHEF.
+    function zapToKashiChef(
+        address to,
+        address _FromTokenContractAddress,
+        uint256 _amount,
+        uint256 _minPoolTokens,
+        uint256 pid,
+        address _swapTarget,
+        bytes calldata swapData
+    ) public payable returns (uint256 fraction) {
+        uint256 toInvest = _pullTokens(
+            _FromTokenContractAddress,
+            _amount
+        );
+        address kashiPair = address(masterChefv2.lpToken(pid));
+        IERC20 asset = IKashiBridge(kashiPair).asset();
+        uint256 LPBought = _performZapIn(
+            _FromTokenContractAddress,
+            address(asset),
+            toInvest,
+            _swapTarget,
+            swapData
+        );
+        require(LPBought >= _minPoolTokens, "ERR: High Slippage");
+        emit ZapIn(to, address(asset), LPBought);
+        asset.safeTransfer(address(bento), LPBought);
+        IBentoBridge(bento).deposit(asset, address(bento), kashiPair, LPBought, 0); 
+        fraction = IKashiBridge(kashiPair).addAsset(address(this), true, LPBought);
+        masterChefv2.deposit(pid, fraction, to);
     }
 /*
 ██   ██       ▄   ▄███▄   
