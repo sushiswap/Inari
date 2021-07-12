@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: GPL-2.0
 /*
 ▄▄█    ▄   ██   █▄▄▄▄ ▄█ 
 ██     █  █ █  █  ▄▀ ██ 
@@ -150,8 +150,6 @@ contract BoringBatchableWithDai is BaseBoringBatchable {
     
     /// @notice Call wrapper that performs `ERC20.permit` on `token`.
     /// Lookup `IERC20.permit`.
-    // F6: Parameters can be used front-run the permit and the user's permit will fail (due to nonce or other revert)
-    //     if part of a batch this could be used to grief once as the second call would not need the permit
     function permitToken(
         IERC20 token,
         address from,
@@ -270,17 +268,44 @@ library SafeMath {
     }
 }
 
-/// @notice SushiSwap liquidity zaps based on awesomeness from zapper.fi (0xcff6eF0B9916682B37D80c19cFF8949bc1886bC2).
+// Copyright (C) 2020-2021 zapper
+// License-Identifier: GPL-2.0
+/// @notice SushiSwap liquidity zaps based on awesomeness from zapper.fi (0xcff6eF0B9916682B37D80c19cFF8949bc1886bC2/0x5abfbE56553a5d794330EACCF556Ca1d2a55647C).
 contract SushiZap {
     using SafeMath for uint256;
-    using BoringERC20 for IERC20;
+    using BoringERC20 for IERC20; 
     
+    address public governor; // SushiZap governance address for approving `_swapTarget` inputs
     address constant sushiSwapFactory = 0xC0AEe478e3658e2610c5F7A4A2E1777cE9e4f2Ac; // SushiSwap factory contract
+    address constant wETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2; // ETH wrapper contract v9
     ISushiSwap constant sushiSwapRouter = ISushiSwap(0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F); // SushiSwap router contract
-    uint256 constant deadline = 0xf000000000000000000000000000000000000000000000000000000000000000; // placeholder for swap deadline
+    uint256 constant deadline = 0xf000000000000000000000000000000000000000000000000000000000000000; // ~ placeholder for swap deadline
     bytes32 constant pairCodeHash = 0xe18a34eb0e04b04f7a0ac29a6e80748dca96319b42c54d679cb821dca90c6303; // SushiSwap pair code hash
+    
+    /// @dev swapTarget => approval status.
+    mapping(address => bool) public approvedTargets;
 
     event ZapIn(address sender, address pool, uint256 tokensRec);
+    
+    constructor() {
+        governor = msg.sender;
+        approvedTargets[wETH] = true;
+    }
+    
+    /// @dev This function whitelists `_swapTarget`s - cf. `Sushiswap_ZapIn_V4` (C) 2021 zapper.
+    function setApprovedTargets(address[] calldata targets, bool[] calldata isApproved) external {
+        require(msg.sender == governor, '!governor');
+        require(targets.length == isApproved.length, 'Invalid Input length');
+        for (uint256 i = 0; i < targets.length; i++) {
+            approvedTargets[targets[i]] = isApproved[i];
+        }
+    }
+    
+    /// @dev This function transfers `governor` role.
+    function transferGovernance(address account) external {
+        require(msg.sender == governor, '!governor');
+        governor = account;
+    }
 
     /**
      @notice This function is used to invest in given SushiSwap pair through ETH/ERC20 Tokens.
@@ -447,6 +472,7 @@ contract SushiZap {
         IERC20 token1 = IERC20(_token1);
         uint256 initialBalance0 = token0.safeBalanceOfSelf();
         uint256 initialBalance1 = token1.safeBalanceOfSelf();
+        require(approvedTargets[_swapTarget], 'Target not Authorized');
         (bool success, ) = _swapTarget.call{value: valueToSend}(swapCallData);
         require(success, 'Error Swapping Tokens 1');
         uint256 finalBalance0 = token0.safeBalanceOfSelf().sub(
@@ -668,7 +694,6 @@ contract InariV1 is BoringBatchableWithDai, SushiZap {
     IBentoBridge constant bento = IBentoBridge(0xF5BCE5077908a1b7370B9ae04AdC565EBd643966); // BENTO vault contract
     address constant crSushiToken = 0x338286C0BC081891A4Bda39C7667ae150bf5D206; // crSUSHI staking contract for SUSHI
     address constant crXSushiToken = 0x228619CCa194Fbe3Ebeb2f835eC1eA5080DaFbb2; // crXSUSHI staking contract for xSUSHI
-    address constant wETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2; // ETH wrapper contract v9
     
     /// @notice Initialize this Inari contract.
     constructor() {
@@ -694,15 +719,6 @@ contract InariV1 is BoringBatchableWithDai, SushiZap {
     }
 
     /***********
-    SUSHI HELPER 
-    ***********/
-    /// @notice Stake SUSHI local balance into xSushi for benefit of `to` by call to `sushiBar`.
-    function stakeSushiBalance(address to) external {
-        ISushiBarBridge(sushiBar).enter(sushiToken.safeBalanceOfSelf()); // stake local SUSHI into `sushiBar` xSUSHI
-        IERC20(sushiBar).safeTransfer(to, IERC20(sushiBar).safeBalanceOfSelf()); // transfer resulting xSUSHI to `to`
-    }
-    
-    /***********
     CHEF HELPERS 
     ***********/
     function depositToMasterChefv2(uint256 pid, uint256 amount, address to) external {
@@ -723,13 +739,13 @@ contract InariV1 is BoringBatchableWithDai, SushiZap {
         uint256 pid,
         address _swapTarget,
         bytes calldata swapData
-    ) external payable returns (uint256) {
+    ) external payable returns (uint256 LPBought) {
         uint256 toInvest = _pullTokens(
             _FromTokenContractAddress,
             _amount
         );
         IERC20 _pairAddress = masterChefv2.lpToken(pid);
-        uint256 LPBought = _performZapIn(
+        LPBought = _performZapIn(
             _FromTokenContractAddress,
             address(_pairAddress),
             toInvest,
@@ -739,7 +755,6 @@ contract InariV1 is BoringBatchableWithDai, SushiZap {
         require(LPBought >= _minPoolTokens, "ERR: High Slippage");
         emit ZapIn(to, address(_pairAddress), LPBought);
         masterChefv2.deposit(pid, LPBought, to);
-        return LPBought;
     }
     
     /************
@@ -928,12 +943,12 @@ contract InariV1 is BoringBatchableWithDai, SushiZap {
         uint256 _minPoolTokens,
         address _swapTarget,
         bytes calldata swapData
-    ) external payable returns (uint256) {
+    ) external payable returns (uint256 LPBought) {
         uint256 toInvest = _pullTokens(
             _FromTokenContractAddress,
             _amount
         );
-        uint256 LPBought = _performZapIn(
+        LPBought = _performZapIn(
             _FromTokenContractAddress,
             _pairAddress,
             toInvest,
@@ -943,7 +958,6 @@ contract InariV1 is BoringBatchableWithDai, SushiZap {
         require(LPBought >= _minPoolTokens, "ERR: High Slippage");
         emit ZapIn(to, _pairAddress, LPBought);
         bento.deposit(IERC20(_pairAddress), address(this), to, LPBought, 0); 
-        return LPBought;
     }
 
     /// @notice Liquidity unzap from BENTO.
