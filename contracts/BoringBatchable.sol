@@ -3,7 +3,7 @@
 pragma solidity 0.7.6;
 pragma experimental ABIEncoderV2;
 
-import "./interfaces/IDAIPermit.sol";
+import "./interfaces/IDaiPermit.sol";
 import "./interfaces/IERC20.sol";
 
 // File @boringcrypto/boring-solidity/contracts/BoringBatchable.sol@v1.2.0
@@ -26,7 +26,7 @@ contract BaseBoringBatchable {
     /// @notice Allows batched call to self (this contract).
     /// @param calls An array of inputs for each call.
     /// @param revertOnFail If True then reverts after a failed call and stops doing further calls.
-    function batch(bytes[] calldata calls, bool revertOnFail) external {
+    function batch(bytes[] calldata calls, bool revertOnFail) external payable {
         for (uint256 i = 0; i < calls.length; i++) {
             (bool success, bytes memory result) = address(this).delegatecall(calls[i]);
             if (!success && revertOnFail) {

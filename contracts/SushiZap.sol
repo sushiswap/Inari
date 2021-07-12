@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: GPL-2.0
 
 pragma solidity 0.7.6;
 pragma experimental ABIEncoderV2;
@@ -6,17 +6,44 @@ pragma experimental ABIEncoderV2;
 import "./libraries/BoringERC20.sol";
 import "./libraries/SafeMath.sol";
 
-/// @notice SushiSwap liquidity zaps based on awesomeness from zapper.fi (0xcff6eF0B9916682B37D80c19cFF8949bc1886bC2).
+// Copyright (C) 2020-2021 zapper
+// License-Identifier: GPL-2.0
+/// @notice SushiSwap liquidity zaps based on awesomeness from zapper.fi (0xcff6eF0B9916682B37D80c19cFF8949bc1886bC2/0x5abfbE56553a5d794330EACCF556Ca1d2a55647C).
 contract SushiZap {
     using SafeMath for uint256;
-    using BoringERC20 for IERC20;
+    using BoringERC20 for IERC20; 
     
+    address public governor; // SushiZap governance address for approving `_swapTarget` inputs
     address constant sushiSwapFactory = 0xC0AEe478e3658e2610c5F7A4A2E1777cE9e4f2Ac; // SushiSwap factory contract
+    address constant wETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2; // ETH wrapper contract v9
     ISushiSwap constant sushiSwapRouter = ISushiSwap(0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F); // SushiSwap router contract
-    uint256 constant deadline = 0xf000000000000000000000000000000000000000000000000000000000000000; // placeholder for swap deadline
+    uint256 constant deadline = 0xf000000000000000000000000000000000000000000000000000000000000000; // ~ placeholder for swap deadline
     bytes32 constant pairCodeHash = 0xe18a34eb0e04b04f7a0ac29a6e80748dca96319b42c54d679cb821dca90c6303; // SushiSwap pair code hash
+    
+    /// @dev swapTarget => approval status.
+    mapping(address => bool) public approvedTargets;
 
     event ZapIn(address sender, address pool, uint256 tokensRec);
+    
+    constructor() {
+        governor = msg.sender;
+        approvedTargets[wETH] = true;
+    }
+    
+    /// @dev This function whitelists `_swapTarget`s - cf. `Sushiswap_ZapIn_V4` (C) 2021 zapper.
+    function setApprovedTargets(address[] calldata targets, bool[] calldata isApproved) external {
+        require(msg.sender == governor, '!governor');
+        require(targets.length == isApproved.length, 'Invalid Input length');
+        for (uint256 i = 0; i < targets.length; i++) {
+            approvedTargets[targets[i]] = isApproved[i];
+        }
+    }
+    
+    /// @dev This function transfers `governor` role.
+    function transferGovernance(address account) external {
+        require(msg.sender == governor, '!governor');
+        governor = account;
+    }
 
     /**
      @notice This function is used to invest in given SushiSwap pair through ETH/ERC20 Tokens.
@@ -183,6 +210,7 @@ contract SushiZap {
         IERC20 token1 = IERC20(_token1);
         uint256 initialBalance0 = token0.safeBalanceOfSelf();
         uint256 initialBalance1 = token1.safeBalanceOfSelf();
+        require(approvedTargets[_swapTarget], 'Target not Authorized');
         (bool success, ) = _swapTarget.call{value: valueToSend}(swapCallData);
         require(success, 'Error Swapping Tokens 1');
         uint256 finalBalance0 = token0.safeBalanceOfSelf().sub(
