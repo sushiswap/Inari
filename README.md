@@ -1,6 +1,6 @@
 # Inari
 
-[Inari](https://etherscan.io/address/0xbD3d5153fe074EF07ECC3696785BA66849bEb84B#code) is a simple ‘zap’ in/out router for token staking, swap and migration.
+[Inari](https://etherscan.io/address/0x195E8262AA81Ba560478EC6Ca4dA73745547073f#code) is a simple ‘zap’ in/out router for token staking, swap and migration.
 
 Example calls, which can also be combined using `batch()`:
 
